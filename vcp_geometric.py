@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from scipy.signal import argrelextrema
 import datetime
+import argparse
 
 def fetch_data(ticker, period="1y"):
     df = yf.download(ticker, period=period, progress=False, auto_adjust=True)
@@ -135,4 +136,8 @@ def analyze_vcp_geometric(ticker):
         print("Result: False")
 
 if __name__ == "__main__":
-    analyze_vcp_geometric("FORM")
+    parser = argparse.ArgumentParser(description='Analyze Geometric VCP.')
+    parser.add_argument('ticker', nargs='?', default="FORM", help='Ticker symbol')
+    args = parser.parse_args()
+
+    analyze_vcp_geometric(args.ticker)
