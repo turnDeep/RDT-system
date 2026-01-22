@@ -1,6 +1,8 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import argparse
+import sys
 
 def fetch_data(ticker, period="1y"):
     df = yf.download(ticker, period=period, progress=False, auto_adjust=True)
@@ -9,13 +11,25 @@ def fetch_data(ticker, period="1y"):
     df.dropna(inplace=True)
     return df
 
-def analyze_vcp_volume(ticker):
+def analyze_vcp_volume(ticker, target_date=None):
     print(f"--- Volume VCP Analysis for {ticker} ---")
-    df = fetch_data(ticker)
+    if target_date:
+        print(f"Target Date: {target_date}")
+
+    df = fetch_data(ticker, period="2y") # Fetch more to ensure we have enough history for the target date
 
     if df.empty:
         print("No data found.")
         return
+
+    # Filter by target date if provided
+    if target_date:
+        target_ts = pd.Timestamp(target_date)
+        df = df[df.index <= target_ts]
+        if df.empty:
+            print(f"No data found up to {target_date}.")
+            return
+        print(f"Data truncated to {df.index[-1].date()}")
 
     # Ensure we have enough data
     if len(df) < 50:
@@ -38,16 +52,16 @@ def analyze_vcp_volume(ticker):
     # Up day: Close > Previous Close
     # Down day: Close < Previous Close
 
-    subset = df.tail(50).copy()
-    subset['prev_close'] = subset['Close'].shift(1)
-
-    # Drop the first row of subset as it will have NaN for prev_close (unless we took 51 days)
-    # Actually, shift(1) inside the tail(50) will make the first one NaN.
-    # Better to take tail(51) and then drop the first one to have valid prev_close for 50 days.
-
+    # We need the last 50 days.
+    # To correctly calculate Up/Down for the last 50 days, we need 51 rows (row 0 to calculate change for row 1).
     subset_calc = df.tail(51).copy()
+
+    if len(subset_calc) < 51:
+         print("Warning: Less than 51 days of data available for Ratio calculation.")
+
     subset_calc['prev_close'] = subset_calc['Close'].shift(1)
-    subset_calc = subset_calc.iloc[1:] # Now we have 50 days with valid comparisons
+    # Drop the first row as it has NaN prev_close
+    subset_calc = subset_calc.iloc[1:]
 
     up_days = subset_calc[subset_calc['Close'] > subset_calc['prev_close']]
     down_days = subset_calc[subset_calc['Close'] < subset_calc['prev_close']]
@@ -75,4 +89,10 @@ def analyze_vcp_volume(ticker):
         print("Result: False")
 
 if __name__ == "__main__":
-    analyze_vcp_volume("FORM")
+    parser = argparse.ArgumentParser(description='Analyze VCP Volume.')
+    parser.add_argument('ticker', nargs='?', default="FORM", help='Ticker symbol')
+    parser.add_argument('--date', help='Target date (YYYY-MM-DD)')
+
+    args = parser.parse_args()
+
+    analyze_vcp_volume(args.ticker, target_date=args.date)
