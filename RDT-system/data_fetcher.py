@@ -1,6 +1,4 @@
 """
-fetch_price_data.py
-
 Yahoo Financeから株価データ(OHLCV)を取得して保存するスクリプト
 既存のprice_data_ohlcv.pklがある場合は差分のみをダウンロードして更新
 """
