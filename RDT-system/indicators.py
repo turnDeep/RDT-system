@@ -1,18 +1,17 @@
 """
-calculate_rs_scores4.py - ベクトル化最適化版 + 並列fetch改善
 
 主な最適化:
 1. Individual RS計算の完全ベクトル化（10-20x高速化）
 2. Sector/Industry RS計算のベクトル化（5-10x高速化）
 3. Market Cap計算の最適化（2-3x高速化）
 4. Percentile計算の最適化
-5. fetch_shares_outstandingの並列化（10-20x高速化）★NEW
+5. fetch_shares_outstandingの並列化（10-20x高速化）
 
 変更点:
 - stock_info_dictの代わりにtarget_stocks_*.csvからSector/Industry情報を取得
 - 発行済株式数の取得を並列化（ThreadPoolExecutor）
 
-RS計算方法（FMP_EPS_RS_20251123_ver1 (1).pyと同じ）:
+RS計算方法:
 - 3ヶ月リターン × 0.4
 - 6ヶ月リターン × 0.2
 - 9ヶ月リターン × 0.2
