@@ -141,18 +141,27 @@ class RDTChartGenerator:
                 # We want to fill the whole panel based on X-axis condition.
                 # Efficient way: Plot a constant line at y_min, and fill to y_max where condition met.
 
-                # Dead (Red)
-                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
-                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_dead, color='red', alpha=0.1)))
-                # Lift (Blue)
-                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
-                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_lift, color='blue', alpha=0.1)))
-                # Drift (Yellow)
-                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
-                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_drift, color='yellow', alpha=0.1)))
-                # Power (Green)
-                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
-                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_power, color='green', alpha=0.1)))
+                # Background Fills using Type='bar' to avoid gaps
+                # We calculate a full-height bar for each zone
+                height = y_max - y_min
+
+                def create_bar_series(mask):
+                    s = pd.Series(np.nan, index=valid_idx)
+                    s[mask] = height
+                    return s
+
+                bar_dead = create_bar_series(mask_dead)
+                bar_lift = create_bar_series(mask_lift)
+                bar_drift = create_bar_series(mask_drift)
+                bar_power = create_bar_series(mask_power)
+
+                # Plot bars filling the background
+                # Width=1.0 ensures continuous fill
+                # Alpha=0.15 slightly higher to see yellow
+                apds.append(mpf.make_addplot(bar_dead, type='bar', panel=2, color='red', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
+                apds.append(mpf.make_addplot(bar_lift, type='bar', panel=2, color='blue', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
+                apds.append(mpf.make_addplot(bar_drift, type='bar', panel=2, color='yellow', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
+                apds.append(mpf.make_addplot(bar_power, type='bar', panel=2, color='green', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
 
                 apds.append(mpf.make_addplot(ratio, panel=2, color='blue', ylabel='Zone RS'))
                 apds.append(mpf.make_addplot(momentum, panel=2, color='orange', secondary_y=False))
