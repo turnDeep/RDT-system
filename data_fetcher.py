@@ -412,6 +412,38 @@ def save_price_data(price_data):
         logging.error(f"Error saving: {e}")
         return False
 
+class RDTDataFetcher:
+    """
+    Wrapper class for data fetching operations.
+    Maintains compatibility with chart_generator.py.
+    """
+    def __init__(self):
+        pass
+
+    def fetch_single(self, ticker, period="2y"):
+        """Fetch single ticker data (Daily)."""
+        # Logic similar to main but for single ticker and returning DF
+        end_date = datetime.now()
+        # Parse period string roughly
+        days = 365 * 2
+        if period == "1y": days = 365
+        elif period == "6mo": days = 180
+
+        start_date = end_date - timedelta(days=days)
+        start_str = start_date.strftime('%Y-%m-%d')
+        end_str = end_date.strftime('%Y-%m-%d')
+
+        try:
+            df = yf.download(ticker, start=start_str, end=end_str, progress=False, auto_adjust=True)
+            return df
+        except Exception as e:
+            logging.error(f"Error fetching {ticker}: {e}")
+            return None
+
+    def fetch_spy(self, period="2y"):
+        """Fetch SPY benchmark."""
+        return self.fetch_single("SPY", period)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Fetch stock price data (incremental)')
