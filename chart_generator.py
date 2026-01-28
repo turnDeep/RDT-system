@@ -200,25 +200,53 @@ class RDTChartGenerator:
                 rs_val = rs_vol_data["RS_Values"][ticker].reindex(valid_idx)
                 rs_ma = rs_vol_data["RS_MA"][ticker].reindex(valid_idx)
 
-                # Color: RS > 0 ? Blue : Fuchsia
-                # Note: 'fuchsia' is accepted by matplotlib, but passing a list of colors to make_addplot
-                # for a line plot might not be fully supported as intended if it expects a single color string or
-                # strictly valid matplotlib format list.
-                # mpf.make_addplot supports `color` as list for bar charts, but for line charts it applies to the whole line usually.
-                # However, some versions support multicolor lines if segments? No.
-                # If we want multicolor line, we usually need to plot two series or use type='scatter' or 'bar'.
-                # But user asked for LINE plot.
-                # Workaround: Plot two series, one for positive, one for negative, masking the other.
+                # --- RS Line (Blue if > 0, Fuchsia if < 0) ---
+                # To ensure continuous line without gaps, we plot the full line in Fuchsia (Base)
+                # and overlay the Positive part in Blue.
+                apds.append(mpf.make_addplot(rs_val, panel=4, color='#ff52c8', ylabel='Vol Adj RS', width=1.5)) # Base (Fuchsia)
 
-                rs_pos = rs_val.apply(lambda x: x if x > 0 else np.nan)
-                rs_neg = rs_val.apply(lambda x: x if x <= 0 else np.nan)
-
+                rs_pos = rs_val.copy()
+                rs_pos[rs_pos <= 0] = np.nan
                 if not rs_pos.isna().all():
-                    apds.append(mpf.make_addplot(rs_pos, panel=4, color='blue', ylabel='Vol Adj RS', width=1.5))
-                if not rs_neg.isna().all():
-                    apds.append(mpf.make_addplot(rs_neg, panel=4, color='fuchsia', width=1.5))
+                    apds.append(mpf.make_addplot(rs_pos, panel=4, color='#0084ff', width=1.5)) # Overlay (Blue)
+
+                # --- MA Line (Blue if Rising, Fuchsia if Falling) ---
                 if not rs_ma.isna().all():
-                    apds.append(mpf.make_addplot(rs_ma, panel=4, color='gray', width=1.0))
+                    ma_diff = rs_ma.diff()
+
+                    # Base Line: Fuchsia (Falling/Default)
+                    apds.append(mpf.make_addplot(rs_ma, panel=4, color='#ff52c8', width=1.0))
+
+                    # Overlay Rising: Blue
+                    # We want to color segments where slope is positive.
+                    # ma_diff > 0.
+                    ma_rising = rs_ma.copy()
+                    # Mask where NOT rising.
+                    # Note: We keep points where diff > 0.
+                    ma_rising[ma_diff <= 0] = np.nan
+
+                    if not ma_rising.isna().all():
+                        apds.append(mpf.make_addplot(ma_rising, panel=4, color='#0084ff', width=1.0))
+
+                # --- Fills ---
+                # Anchor: Zero Line (Invisible)
+                zero_line = pd.Series(0, index=valid_idx)
+
+                # Fill 1: RS vs 0
+                # Blue where RS > 0
+                apds.append(mpf.make_addplot(zero_line, panel=4, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=rs_val.values, y2=0, where=rs_val.values > 0, color='#0084ff', alpha=0.2)))
+                # Fuchsia where RS < 0
+                apds.append(mpf.make_addplot(zero_line, panel=4, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=rs_val.values, y2=0, where=rs_val.values < 0, color='#ff52c8', alpha=0.2)))
+
+                # Fill 2: RS vs MA
+                # Blue where RS > MA
+                apds.append(mpf.make_addplot(zero_line, panel=4, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=rs_val.values, y2=rs_ma.values, where=rs_val.values > rs_ma.values, color='#0084ff', alpha=0.2)))
+                # Fuchsia where RS < MA
+                apds.append(mpf.make_addplot(zero_line, panel=4, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=rs_val.values, y2=rs_ma.values, where=rs_val.values < rs_ma.values, color='#ff52c8', alpha=0.2)))
 
             except KeyError:
                 pass
