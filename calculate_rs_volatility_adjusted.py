@@ -197,7 +197,7 @@ def calculate_wma(series, length):
     sum_weights = weights.sum()
 
     def wma_func(x):
-        if x.isna().any(): return np.nan
+        if np.isnan(x).any(): return np.nan
         return np.dot(x, weights) / sum_weights
 
     # This is slow for 5000 columns.
