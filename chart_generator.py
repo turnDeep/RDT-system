@@ -111,19 +111,51 @@ class RDTChartGenerator:
             try:
                 ratio = zone_rs_data["Ratio"][ticker].reindex(valid_idx)
                 momentum = zone_rs_data["Momentum"][ticker].reindex(valid_idx)
-                # Scale momentum to match Ratio visually? Or plot on same scale?
-                # Pine plots both. Ratio ~1.0, Mom ~0-10?.
-                # Pine uses separate scales? "overlay=false" implies one scale if in same script.
-                # Actually Pine script: plot(rsRatio), plot(rsMomentum). They share the panel.
-                # RRG Momentum is usually centered around 100 (like Ratio) in standard RRG,
-                # but this script calculates ROC (percentage). Ratio is ~1.0.
-                # If Ratio is 1.05 and Mom is 2.0 (%), they might display ok together.
-                # Let's plot raw.
+                zones = zone_rs_data["Zone"][ticker].reindex(valid_idx)
+
+                # Determine scale for fill
+                y_min = min(ratio.min(), momentum.min())
+                y_max = max(ratio.max(), momentum.max())
+                # Add buffer
+                y_min -= abs(y_min) * 0.1
+                y_max += abs(y_max) * 0.1
+
+                # Create constants for fill
+                y1 = pd.Series(y_min, index=valid_idx)
+                y2 = pd.Series(y_max, index=valid_idx)
+
+                # Masks
+                mask_dead = zones == 0
+                mask_lift = zones == 1
+                mask_drift = zones == 2
+                mask_power = zones == 3
+
+                # Background Fills (using fill_between logic via addplot lines + fill_between)
+                # Note: mplfinance 0.12.7+ supports fill_between in make_addplot via `type='line'` and `fill_between` kwarg?
+                # Actually, `fill_between` argument in make_addplot expects a dict or value.
+                # Let's use the `fill_between` argument of `make_addplot` which accepts a dict.
+
+                # Dead (Red)
+                # We plot invisible lines and fill between them?
+                # No, we can attach fill_between to the ratio plot? No, that fills to Y=0 or Y=y2.
+                # We want to fill the whole panel based on X-axis condition.
+                # Efficient way: Plot a constant line at y_min, and fill to y_max where condition met.
+
+                # Dead (Red)
+                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_dead, color='red', alpha=0.1)))
+                # Lift (Blue)
+                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_lift, color='blue', alpha=0.1)))
+                # Drift (Yellow)
+                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_drift, color='yellow', alpha=0.1)))
+                # Power (Green)
+                apds.append(mpf.make_addplot(y1, panel=2, color='white', alpha=0, secondary_y=False,
+                                            fill_between=dict(y1=y_min, y2=y_max, where=mask_power, color='green', alpha=0.1)))
 
                 apds.append(mpf.make_addplot(ratio, panel=2, color='blue', ylabel='Zone RS'))
                 apds.append(mpf.make_addplot(momentum, panel=2, color='orange', secondary_y=False))
-                # Horizontal lines for 1.0 (Ratio) and 0.0 (Momentum)
-                # apds.append(mpf.make_addplot(pd.Series(1, index=valid_idx), panel=2, color='gray', linestyle='--'))
 
             except KeyError:
                 pass
