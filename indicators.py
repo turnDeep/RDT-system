@@ -43,6 +43,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 DATA_FOLDER = "data"
+if not os.path.exists(os.path.join(script_dir, DATA_FOLDER)):
+    os.makedirs(os.path.join(script_dir, DATA_FOLDER))
+
 PRICE_DATA_PATH = os.path.join(script_dir, DATA_FOLDER, "price_data_ohlcv.pkl")
 SHARES_OUTSTANDING_PATH = os.path.join(script_dir, DATA_FOLDER, "shares_outstanding.pkl")
 
@@ -101,6 +104,44 @@ def load_target_stocks():
     Returns:
         dict: {symbol: {'sector': sector, 'industry': industry}}
     """
+    # Check for stock.csv
+    stock_csv_path = os.path.join(script_dir, "stock.csv")
+    if os.path.exists(stock_csv_path):
+        try:
+            logging.info(f"Reading symbols from: {os.path.basename(stock_csv_path)}")
+            df = pd.read_csv(stock_csv_path)
+
+            # Map Ticker to Symbol
+            if 'Ticker' in df.columns and 'Symbol' not in df.columns:
+                df = df.rename(columns={'Ticker': 'Symbol'})
+
+            if 'Symbol' in df.columns:
+                stock_info = {}
+                for _, row in df.iterrows():
+                    symbol = row['Symbol']
+                    # stock.csv only has Exchange, so set defaults
+                    sector = 'N/A'
+                    industry = 'N/A'
+
+                    stock_info[symbol] = {
+                        'sector': sector,
+                        'industry': industry
+                    }
+
+                logging.info(f"\n{'='*60}")
+                logging.info("STOCK CSV INFO LOADED")
+                logging.info(f"{'='*60}")
+                logging.info(f"File: {os.path.basename(stock_csv_path)}")
+                logging.info(f"Total symbols: {len(stock_info)}")
+                logging.info("Note: Sector/Industry info missing in stock.csv, set to N/A")
+                logging.info(f"{'='*60}\n")
+
+                return stock_info
+            else:
+                logging.warning("Symbol/Ticker column not found in stock.csv")
+        except Exception as e:
+            logging.error(f"Error reading stock.csv: {e}")
+
     # 最新のtarget_stocks_*.csvを見つける
     pattern = os.path.join(script_dir, DATA_FOLDER, "target_stocks_*.csv")
     files = glob.glob(pattern)

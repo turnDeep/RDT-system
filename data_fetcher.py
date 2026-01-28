@@ -23,6 +23,8 @@ END_DATE = None    # 例: "2025-01-13"
 # ============================================================
 
 DATA_FOLDER = "data"
+if not os.path.exists(DATA_FOLDER):
+    os.makedirs(DATA_FOLDER)
 PRICE_DATA_PATH = os.path.join(DATA_FOLDER, "price_data_ohlcv.pkl")
 BACKUP_PATH = os.path.join(DATA_FOLDER, "price_data_ohlcv_backup.pkl")
 
@@ -82,6 +84,43 @@ def get_unique_symbols(symbol_limit=None, override_start_date=None):
         symbol_limit: シンボル数の制限
         override_start_date: 開始日の上書き（グローバル設定より優先）
     """
+    # Check for stock.csv in the current directory
+    stock_csv_path = "stock.csv"
+    if os.path.exists(stock_csv_path):
+        try:
+            logging.info(f"Reading symbols from: {stock_csv_path}")
+            df = pd.read_csv(stock_csv_path)
+
+            # stock.csv has 'Ticker', map to 'Symbol'
+            if 'Ticker' in df.columns and 'Symbol' not in df.columns:
+                df = df.rename(columns={'Ticker': 'Symbol'})
+
+            if 'Symbol' in df.columns:
+                all_symbols = df['Symbol'].dropna().unique().tolist()
+                unique_symbols = sorted(list(set(all_symbols)))
+                logging.info(f"Found {len(unique_symbols)} unique symbols from stock.csv.")
+
+                # Determine start date logic
+                if override_start_date:
+                    start_date = override_start_date
+                    logging.info(f"Base start date: {start_date} (from override)")
+                elif START_DATE:
+                    start_date = START_DATE
+                    logging.info(f"Base start date: {start_date} (from config)")
+                else:
+                    start_date = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+                    logging.info(f"Base start date: {start_date} (6 months before today, default)")
+
+                if symbol_limit is not None and symbol_limit > 0:
+                    logging.info(f"Limiting to {symbol_limit} symbols for this run.")
+                    unique_symbols = unique_symbols[:symbol_limit]
+
+                return unique_symbols, start_date
+            else:
+                logging.warning("'Symbol' (or 'Ticker') column not found in stock.csv. Falling back to target_stocks CSV.")
+        except Exception as e:
+            logging.error(f"Error reading {stock_csv_path}: {e}. Falling back to target_stocks CSV.")
+
     # Try to find target_stocks CSV file
     csv_files = glob.glob(os.path.join(DATA_FOLDER, "target_stocks*.csv"))
     
