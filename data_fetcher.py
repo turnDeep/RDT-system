@@ -253,10 +253,15 @@ def download_price_data(symbols, start_date, end_date=None, chunk_size=50, delay
                     start=start_date,
                     end=end_date,
                     threads=False,
-                    progress=False
+                    progress=False,
+                    auto_adjust=True
                 )
                 
                 if not data.empty:
+                    # Check for Volume
+                    if 'Volume' not in data.columns.get_level_values(0):
+                        logging.warning(f"⚠ Chunk {chunk_num}: Volume data missing!")
+
                     all_data.append(data)
                     successful = data.columns.get_level_values(1).unique().tolist()
                     logging.info(f"✓ Chunk {chunk_num}: {len(successful)}/{len(chunk)} symbols, {len(data)} rows")
