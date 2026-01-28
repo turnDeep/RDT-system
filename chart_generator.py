@@ -2,7 +2,7 @@ import pandas as pd
 import mplfinance as mpf
 import matplotlib.pyplot as plt
 from data_fetcher import RDTDataFetcher
-from indicators import RDTIndicators
+from calculate_rs_scores import RDTIndicators
 import os
 
 class RDTChartGenerator:
