@@ -87,23 +87,79 @@ class RDTChartGenerator:
             try:
                 fast_trail = atr_ts_data["Fast_Trail"][ticker].reindex(valid_idx)
                 slow_trail = atr_ts_data["Slow_Trail"][ticker].reindex(valid_idx)
+                signals = atr_ts_data["Signals"][ticker].reindex(valid_idx)
+                trend_state = atr_ts_data["Trend_State"][ticker].reindex(valid_idx)
 
-                # Colors based on state (Green if Fast > Slow, Red else)
-                # Fill between is tricky with make_addplot directly, but we can plot lines.
-                # Pine: fill(TS1, TS2, Bull ? green : red)
-                # mpf.make_addplot has 'fill_between' argument in newer versions or use separate collection.
-                # Simple approach: Plot lines.
+                # --- Candle Coloring (4 States) ---
+                # 3: Green (Bull), 2: Blue (Bull Dip), 1: Yellow (Bear Rally), 0: Red (Bear)
 
-                apds.append(mpf.make_addplot(fast_trail, panel=0, color='blue', width=1.0)) # Fast
-                apds.append(mpf.make_addplot(slow_trail, panel=0, color='red', width=1.5)) # Slow
+                # Helper to create masked OHLC
+                def get_state_ohlc(state_val):
+                    mask = (trend_state == state_val)
+                    sub_df = plot_df.copy()
+                    sub_df.loc[~mask, ['Open', 'High', 'Low', 'Close']] = np.nan
+                    return sub_df
 
-                # We can replicate "Bull" fill by filling where Fast > Slow
-                # dict(y1=..., y2=..., where=..., color=...)
-                # mpf currently supports fill_between as a dict or collection.
-                # Let's stick to lines to avoid complex fill logic breakage, or try specific fill if robust.
+                ohlc_green = get_state_ohlc(3)
+                ohlc_blue = get_state_ohlc(2)
+                ohlc_yellow = get_state_ohlc(1)
+                ohlc_red = get_state_ohlc(0)
 
-            except KeyError:
-                print(f"Warning: {ticker} not found in ATR TS data.")
+                # Add Candle Plots (Overlays)
+                apds.append(mpf.make_addplot(ohlc_green, type='candle', panel=0, color='lime'))
+                apds.append(mpf.make_addplot(ohlc_blue, type='candle', panel=0, color='blue'))
+                apds.append(mpf.make_addplot(ohlc_yellow, type='candle', panel=0, color='yellow'))
+                apds.append(mpf.make_addplot(ohlc_red, type='candle', panel=0, color='red'))
+
+                # --- Trails ---
+                # Slow Trail Coloring: Green if Trail1 > Trail2, Red otherwise.
+                mask_bull = (fast_trail > slow_trail).fillna(False)
+
+                slow_bull = slow_trail.copy()
+                slow_bull[~mask_bull] = np.nan
+
+                slow_bear = slow_trail.copy()
+                slow_bear[mask_bull] = np.nan
+
+                apds.append(mpf.make_addplot(slow_bull, panel=0, color='green', width=1.5))
+                apds.append(mpf.make_addplot(slow_bear, panel=0, color='red', width=1.5))
+
+                # --- Fill ---
+                v_fast = fast_trail.values
+                v_slow = slow_trail.values
+                v_mask_bull = mask_bull.values
+
+                # Fill Green
+                apds.append(mpf.make_addplot(
+                    slow_trail, panel=0, color='green', alpha=0,
+                    fill_between=dict(y1=v_fast, y2=v_slow, where=v_mask_bull, color='green', alpha=0.1),
+                    secondary_y=False
+                ))
+                # Fill Red
+                apds.append(mpf.make_addplot(
+                    slow_trail, panel=0, color='red', alpha=0,
+                    fill_between=dict(y1=v_fast, y2=v_slow, where=~v_mask_bull, color='red', alpha=0.1),
+                    secondary_y=False
+                ))
+
+                # --- Signals ---
+                buy_sig = signals == 1
+                sell_sig = signals == -1
+
+                buy_markers = plot_df['Low'] * 0.95
+                buy_markers[~buy_sig] = np.nan
+
+                sell_markers = plot_df['High'] * 1.05
+                sell_markers[~sell_sig] = np.nan
+
+                if not buy_markers.isna().all():
+                    apds.append(mpf.make_addplot(buy_markers, type='scatter', markersize=50, marker='^', color='green', panel=0))
+
+                if not sell_markers.isna().all():
+                    apds.append(mpf.make_addplot(sell_markers, type='scatter', markersize=50, marker='v', color='red', panel=0))
+
+            except KeyError as e:
+                print(f"Warning: Data missing for {ticker} in ATR TS: {e}")
 
         # 2. Zone RS (Panel 2)
         # Ratio (Blue), Momentum (Orange)
