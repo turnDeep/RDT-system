@@ -258,12 +258,26 @@ class RDTChartGenerator:
 
                 if not rs_ma.isna().all():
                     ma_diff = rs_ma.diff()
+
+                    # Create masks with overlap logic to avoid gaps
+                    # Point i is 'rising' if segment (i-1 -> i) is rising OR segment (i -> i+1) is rising
+                    # Diff[i] tells about i-1 -> i
+
+                    is_rising = ma_diff >= 0
+                    is_falling = ma_diff < 0
+
+                    # Rising line: Include i if i is end of rising segment OR start of rising segment
+                    mask_rising = is_rising | is_rising.shift(-1).fillna(False)
+
+                    # Falling line: Include i if i is end of falling segment OR start of falling segment
+                    mask_falling = is_falling | is_falling.shift(-1).fillna(False)
+
                     ma_rising = rs_ma.copy()
                     ma_falling = rs_ma.copy()
-                    ma_rising_mask = ma_diff >= 0
-                    ma_falling_mask = ma_diff < 0
-                    ma_rising[~ma_rising_mask] = np.nan
-                    ma_falling[~ma_falling_mask] = np.nan
+
+                    ma_rising[~mask_rising] = np.nan
+                    ma_falling[~mask_falling] = np.nan
+
                     apds.append(mpf.make_addplot(ma_rising, panel=4, color='blue', width=1.5))
                     apds.append(mpf.make_addplot(ma_falling, panel=4, color='fuchsia', width=1.5))
 
