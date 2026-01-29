@@ -923,18 +923,20 @@ def print_summary(individual_rs, sector_rs, industry_rs):
     logging.info(f"\nSector RS:")
     logging.info(f"  Sectors: {len(sector_rs)}")
     logging.info(f"  Dates: {len(sector_rs.columns)}")
-    logging.info(f"  Sample (latest date):")
-    top_5_sectors = sector_rs[latest_date].nlargest(5)
-    for sector, rs in top_5_sectors.items():
-        logging.info(f"    {sector}: {rs:.2f}")
+    if not sector_rs.empty and latest_date in sector_rs.columns:
+        logging.info(f"  Sample (latest date):")
+        top_5_sectors = sector_rs[latest_date].nlargest(5)
+        for sector, rs in top_5_sectors.items():
+            logging.info(f"    {sector}: {rs:.2f}")
     
     logging.info(f"\nIndustry RS:")
     logging.info(f"  Industries: {len(industry_rs)}")
     logging.info(f"  Dates: {len(industry_rs.columns)}")
-    logging.info(f"  Sample (latest date):")
-    top_5_industries = industry_rs[latest_date].nlargest(5)
-    for industry, rs in top_5_industries.items():
-        logging.info(f"    {industry}: {rs:.2f}")
+    if not industry_rs.empty and latest_date in industry_rs.columns:
+        logging.info(f"  Sample (latest date):")
+        top_5_industries = industry_rs[latest_date].nlargest(5)
+        for industry, rs in top_5_industries.items():
+            logging.info(f"    {industry}: {rs:.2f}")
     
     logging.info(f"\n{'='*60}\n")
 
@@ -1032,28 +1034,30 @@ if __name__ == "__main__":
     # Sector RS計算（ベクトル化版）
     new_sector_rs = calculate_sector_rs_vectorized(new_individual_rs, stock_info, market_caps)
     if new_sector_rs is None or new_sector_rs.empty:
-        logging.error("Failed to calculate Sector RS")
-        exit(1)
-    
-    # 既存データと結合
-    final_sector_rs = merge_rs_data(existing_sector, new_sector_rs)
-    
-    # パーセンタイル化（ベクトル化版）
-    if args.percentile:
-        final_sector_rs = calculate_percentiles_vectorized(final_sector_rs)
+        logging.warning("Failed to calculate Sector RS (continuing with empty)")
+        new_sector_rs = pd.DataFrame()
+        final_sector_rs = pd.DataFrame()
+    else:
+        # 既存データと結合
+        final_sector_rs = merge_rs_data(existing_sector, new_sector_rs)
+
+        # パーセンタイル化（ベクトル化版）
+        if args.percentile:
+            final_sector_rs = calculate_percentiles_vectorized(final_sector_rs)
     
     # Industry RS計算（ベクトル化版）
     new_industry_rs = calculate_industry_rs_vectorized(new_individual_rs, stock_info, market_caps)
     if new_industry_rs is None or new_industry_rs.empty:
-        logging.error("Failed to calculate Industry RS")
-        exit(1)
-    
-    # 既存データと結合
-    final_industry_rs = merge_rs_data(existing_industry, new_industry_rs)
-    
-    # パーセンタイル化（ベクトル化版）
-    if args.percentile:
-        final_industry_rs = calculate_percentiles_vectorized(final_industry_rs)
+        logging.warning("Failed to calculate Industry RS (continuing with empty)")
+        new_industry_rs = pd.DataFrame()
+        final_industry_rs = pd.DataFrame()
+    else:
+        # 既存データと結合
+        final_industry_rs = merge_rs_data(existing_industry, new_industry_rs)
+
+        # パーセンタイル化（ベクトル化版）
+        if args.percentile:
+            final_industry_rs = calculate_percentiles_vectorized(final_industry_rs)
     
     # サマリー表示
     print_summary(final_individual_rs, final_sector_rs, final_industry_rs)

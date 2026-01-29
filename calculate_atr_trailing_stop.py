@@ -314,6 +314,7 @@ def main():
     args = parser.parse_args()
 
     logging.info("=== Starting ATR Trailing Stop Calculation (Weekly) ===")
+    logging.info(f"Parameters: Fast({args.fast_period}, {args.fast_mult}), Slow({args.slow_period}, {args.slow_mult})")
 
     # 1. Load Data
     daily_data = load_price_data()
