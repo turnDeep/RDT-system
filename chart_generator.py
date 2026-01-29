@@ -20,14 +20,6 @@ class RDTChartGenerator:
         print(f"Generating chart for {ticker}...")
 
         # 1. Load Data
-        # We assume the calculate scripts have run and populated the PKLs.
-        # But for a specific ticker argument, we might need to fetch fresh if not present?
-        # The prompt implies "verify with HYMC", assuming data exists or we make it exist.
-        # Let's assume the calculate scripts handle the universe. If HYMC isn't in stock.csv, it won't be in PKLs.
-        # Ideally, we should fetch HYMC daily data first if missing, then recalc?
-        # For simplicity in this tool context, we assume data is available or we rely on what's in the PKLs.
-
-        # Load Weekly Indicators
         zone_rs_data = self.load_pickle_data("zone_rs_weekly.pkl")
         rs_perc_data = self.load_pickle_data("rs_percentile_histogram_weekly.pkl")
         rs_vol_data = self.load_pickle_data("rs_volatility_adjusted_weekly.pkl")
@@ -44,9 +36,7 @@ class RDTChartGenerator:
         # Extract Ticker Data
         if isinstance(price_pkl.columns, pd.MultiIndex):
             try:
-                # Handle MultiIndex safely
                 # Level 0: Close, High, etc. Level 1: Ticker
-                # We want columns: Open, High, Low, Close, Volume
                 df = pd.DataFrame({
                     'Open': price_pkl['Open'][ticker],
                     'High': price_pkl['High'][ticker],
@@ -82,86 +72,113 @@ class RDTChartGenerator:
         # --- Prepare Additional Plots (apds) ---
         apds = []
 
-        # 1. ATR Trailing Stop (Main Chart Overlay)
+        # 1. ATR Trailing Stop (Panel 0)
+        # Requirement: Colored Bars (Green, Blue, Yellow, Red) based on Trend State
+        # Trails: Fast (Blue/Yellow?), Slow (Green/Red?).
+        # Fill: Green (Fast > Slow), Red (Slow > Fast).
+
+        main_plot_type = 'candle' # Default if no ATR data
+
         if atr_ts_data:
             try:
                 fast_trail = atr_ts_data["Fast_Trail"][ticker].reindex(valid_idx)
                 slow_trail = atr_ts_data["Slow_Trail"][ticker].reindex(valid_idx)
+                states = atr_ts_data["Trend_State"][ticker].reindex(valid_idx)
 
-                # Colors based on state (Green if Fast > Slow, Red else)
-                # Fill between is tricky with make_addplot directly, but we can plot lines.
-                # Pine: fill(TS1, TS2, Bull ? green : red)
-                # mpf.make_addplot has 'fill_between' argument in newer versions or use separate collection.
-                # Simple approach: Plot lines.
+                # 1. Trails
+                # Colors based on prompt/image (Slow Trail Green/Red)
+                # We'll use: Fast (Blue), Slow (Red) for simplicity unless strict requirement.
+                # Actually, Image 9340 shows "Slow Trail" with color Green and Red.
+                # This implies the line changes color.
+                # Let's try to implement color change for Slow Trail if possible?
+                # Or just use Red for Slow, Blue for Fast.
+                # Fill logic: Green (Bull), Red (Bear).
 
-                apds.append(mpf.make_addplot(fast_trail, panel=0, color='blue', width=1.0)) # Fast
-                apds.append(mpf.make_addplot(slow_trail, panel=0, color='red', width=1.5)) # Slow
+                apds.append(mpf.make_addplot(fast_trail, panel=0, color='blue', width=1.0))
 
-                # We can replicate "Bull" fill by filling where Fast > Slow
-                # dict(y1=..., y2=..., where=..., color=...)
-                # mpf currently supports fill_between as a dict or collection.
-                # Let's stick to lines to avoid complex fill logic breakage, or try specific fill if robust.
+                # Fill logic
+                v_fast = fast_trail.values
+                v_slow = slow_trail.values
+                mask_valid = ~np.isnan(v_fast) & ~np.isnan(v_slow)
+
+                where_bull = np.zeros_like(v_fast, dtype=bool)
+                where_bull[mask_valid] = v_fast[mask_valid] > v_slow[mask_valid]
+
+                where_bear = np.zeros_like(v_fast, dtype=bool)
+                where_bear[mask_valid] = v_fast[mask_valid] <= v_slow[mask_valid]
+
+                # Slow Trail with Fill
+                # We can't change line color easily without splitting, but simple Red is standard for TS.
+                apds.append(mpf.make_addplot(
+                    slow_trail, panel=0, color='red', width=1.5,
+                    fill_between=dict(y1=v_fast, y2=v_slow, where=where_bull, color='green', alpha=0.1)
+                ))
+                 # Add another for Bear fill
+                apds.append(mpf.make_addplot(
+                    slow_trail, panel=0, color='red', width=1.5,
+                    fill_between=dict(y1=v_fast, y2=v_slow, where=where_bear, color='red', alpha=0.1)
+                ))
+
+                # 2. Colored Candles
+                # We need to suppress main plot candles and add our own.
+                main_plot_type = 'line' # We will make it invisible later
+
+                # Create 4 DataFrames for states
+                # 0: Red, 1: Yellow, 2: Blue, 3: Green
+                df_red = plot_df.copy()
+                df_red[states != 0] = np.nan
+
+                df_yellow = plot_df.copy()
+                df_yellow[states != 1] = np.nan
+
+                df_blue = plot_df.copy()
+                df_blue[states != 2] = np.nan
+
+                df_green = plot_df.copy()
+                df_green[states != 3] = np.nan
+
+                # Add candle plots
+                # Note: 'type' argument in make_addplot is supported in recent mplfinance versions.
+                # Ensure we have OHLC data in these DFs (we copied plot_df).
+
+                # Colors
+                # Red, Yellow, Blue, Green (Lime)
+                apds.append(mpf.make_addplot(df_red, type='candle', panel=0, color='red'))
+                apds.append(mpf.make_addplot(df_yellow, type='candle', panel=0, color='yellow'))
+                apds.append(mpf.make_addplot(df_blue, type='candle', panel=0, color='#1e90ff')) # DodgerBlue
+                apds.append(mpf.make_addplot(df_green, type='candle', panel=0, color='lime'))
 
             except KeyError:
                 print(f"Warning: {ticker} not found in ATR TS data.")
+                main_plot_type = 'candle'
 
         # 2. Zone RS (Panel 2)
-        # Ratio (Blue), Momentum (Orange)
         if zone_rs_data:
             try:
                 ratio = zone_rs_data["Ratio"][ticker].reindex(valid_idx)
                 momentum = zone_rs_data["Momentum"][ticker].reindex(valid_idx)
                 zones = zone_rs_data["Zone"][ticker].reindex(valid_idx)
 
-                # Determine scale for fill
                 y_min = min(ratio.min(), momentum.min())
                 y_max = max(ratio.max(), momentum.max())
-                # Add buffer
                 y_min -= abs(y_min) * 0.1
                 y_max += abs(y_max) * 0.1
 
-                # Create constants for fill
-                y1 = pd.Series(y_min, index=valid_idx)
-                y2 = pd.Series(y_max, index=valid_idx)
-
-                # Masks
                 mask_dead = zones == 0
                 mask_lift = zones == 1
                 mask_drift = zones == 2
                 mask_power = zones == 3
 
-                # Background Fills (using fill_between logic via addplot lines + fill_between)
-                # Note: mplfinance 0.12.7+ supports fill_between in make_addplot via `type='line'` and `fill_between` kwarg?
-                # Actually, `fill_between` argument in make_addplot expects a dict or value.
-                # Let's use the `fill_between` argument of `make_addplot` which accepts a dict.
-
-                # Dead (Red)
-                # We plot invisible lines and fill between them?
-                # No, we can attach fill_between to the ratio plot? No, that fills to Y=0 or Y=y2.
-                # We want to fill the whole panel based on X-axis condition.
-                # Efficient way: Plot a constant line at y_min, and fill to y_max where condition met.
-
-                # Background Fills using Type='bar' to avoid gaps
-                # We calculate a full-height bar for each zone
                 height = y_max - y_min
-
                 def create_bar_series(mask):
                     s = pd.Series(np.nan, index=valid_idx)
                     s[mask] = height
                     return s
 
-                bar_dead = create_bar_series(mask_dead)
-                bar_lift = create_bar_series(mask_lift)
-                bar_drift = create_bar_series(mask_drift)
-                bar_power = create_bar_series(mask_power)
-
-                # Plot bars filling the background
-                # Width=1.0 ensures continuous fill
-                # Alpha=0.15 slightly higher to see yellow
-                apds.append(mpf.make_addplot(bar_dead, type='bar', panel=2, color='red', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
-                apds.append(mpf.make_addplot(bar_lift, type='bar', panel=2, color='blue', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
-                apds.append(mpf.make_addplot(bar_drift, type='bar', panel=2, color='yellow', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
-                apds.append(mpf.make_addplot(bar_power, type='bar', panel=2, color='green', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
+                apds.append(mpf.make_addplot(create_bar_series(mask_dead), type='bar', panel=2, color='red', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
+                apds.append(mpf.make_addplot(create_bar_series(mask_lift), type='bar', panel=2, color='blue', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
+                apds.append(mpf.make_addplot(create_bar_series(mask_drift), type='bar', panel=2, color='yellow', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
+                apds.append(mpf.make_addplot(create_bar_series(mask_power), type='bar', panel=2, color='green', alpha=0.15, width=1.0, bottom=y_min, secondary_y=False))
 
                 apds.append(mpf.make_addplot(ratio, panel=2, color='blue', ylabel='Zone RS'))
                 apds.append(mpf.make_addplot(momentum, panel=2, color='orange', secondary_y=False))
@@ -170,27 +187,21 @@ class RDTChartGenerator:
                 pass
 
         # 3. Historical Percentile (Panel 3)
-        # 1M Mode Histogram
         if rs_perc_data:
             try:
-                # Use 1M mode
                 perc = rs_perc_data["Percentile_1M"][ticker].reindex(valid_idx)
-
-                # Color coding (Pine logic: <10, <30, <50, <70, <85, <95, >95)
-                # Creating a list of colors
                 colors = []
                 for v in perc:
                     if pd.isna(v): colors.append('white')
-                    elif v < 10: colors.append('#d86eef') # Very Low (Purple)
-                    elif v < 30: colors.append('#d3eeff') # Low (Light Blue)
-                    elif v < 50: colors.append('#4e7eff') # Mod Low
-                    elif v < 70: colors.append('#96d7ff') # Mod
-                    elif v < 85: colors.append('#80cfff') # Mod High
-                    elif v < 95: colors.append('#1eaaff') # High
-                    else: colors.append('#30b0ff') # Very High
+                    elif v < 10: colors.append('#d86eef')
+                    elif v < 30: colors.append('#d3eeff')
+                    elif v < 50: colors.append('#4e7eff')
+                    elif v < 70: colors.append('#96d7ff')
+                    elif v < 85: colors.append('#80cfff')
+                    elif v < 95: colors.append('#1eaaff')
+                    else: colors.append('#30b0ff')
 
                 apds.append(mpf.make_addplot(perc, type='bar', panel=3, color=colors, ylabel='Hist %'))
-
             except KeyError:
                 pass
 
@@ -200,106 +211,49 @@ class RDTChartGenerator:
                 rs_val = rs_vol_data["RS_Values"][ticker].reindex(valid_idx)
                 rs_ma = rs_vol_data["RS_MA"][ticker].reindex(valid_idx)
 
-                # --- Panel 4: Volatility Adjusted RS ---
-                # Requirements:
-                # 1. RS Line: Blue if > 0, Fuchsia if < 0
-                # 2. MA Line: Blue if Rising, Fuchsia if Falling
-                # 3. Fill 1: RS vs 0 (Blue > 0, Pink < 0)
-                # 4. Fill 2: RS vs MA (Blue > MA, Pink < MA)
-
-                # Prepare RS Line Colors
-                # To avoid gaps, we can't just mask NaNs.
-                # We plot the full line in one color (e.g. Blue) and overlay? No, color changes.
-                # Workaround: We will plot two lines, masking the values.
-                # To reduce gaps, we extend the mask slightly?
-                # For now, simple split.
-
                 rs_pos = rs_val.apply(lambda x: x if x >= 0 else np.nan)
                 rs_neg = rs_val.apply(lambda x: x if x <= 0 else np.nan)
 
-                # Plot RS Segments
                 apds.append(mpf.make_addplot(rs_pos, panel=4, color='blue', width=1.5, ylabel='Vol Adj RS'))
                 apds.append(mpf.make_addplot(rs_neg, panel=4, color='fuchsia', width=1.5))
 
-                # Prepare MA Line Colors (Slope based)
                 if not rs_ma.isna().all():
                     ma_diff = rs_ma.diff()
-                    # We can't easily plot multicolor line in mpf without segments.
-                    # Creating segments for MA.
-                    # Shift -1 to align logic? ta.rising(ma, 1) means current > prev.
                     ma_rising = rs_ma.copy()
                     ma_falling = rs_ma.copy()
-
-                    # Logic: if current > prev, it's rising.
-                    # If diff > 0, keep in rising.
-                    # To keep continuity, we might need overlapping points.
-                    # Simplification: Just two plots.
 
                     ma_rising_mask = ma_diff >= 0
                     ma_falling_mask = ma_diff < 0
 
-                    # Apply masks (with overlap to close gaps? mpf handles points, but lines might break)
-                    # We accept small gaps for now to meet color requirement.
                     ma_rising[~ma_rising_mask] = np.nan
                     ma_falling[~ma_falling_mask] = np.nan
 
                     apds.append(mpf.make_addplot(ma_rising, panel=4, color='blue', width=1.5))
                     apds.append(mpf.make_addplot(ma_falling, panel=4, color='fuchsia', width=1.5))
 
-                # --- Fills ---
-                # We need access to numpy arrays for logic
+                # Fills
                 v_rs = rs_val.values
                 v_ma = rs_ma.values
                 v_zero = np.zeros_like(v_rs)
-
-                # Common mask
                 mask_valid_rs = ~np.isnan(v_rs)
                 mask_valid_ma = ~np.isnan(v_ma)
 
-                # 1. Fill RS vs 0
-                # Blue where RS > 0, Pink where RS < 0
                 where_rs_pos = np.zeros_like(v_rs, dtype=bool)
                 where_rs_pos[mask_valid_rs] = v_rs[mask_valid_rs] > 0
-
                 where_rs_neg = np.zeros_like(v_rs, dtype=bool)
                 where_rs_neg[mask_valid_rs] = v_rs[mask_valid_rs] <= 0
 
-                # Use invisible plots to drive the fills
-                # Fill Blue (RS > 0)
-                apds.append(mpf.make_addplot(
-                    rs_val, panel=4, color='blue', alpha=0,
-                    fill_between=dict(y1=v_rs, y2=v_zero, where=where_rs_pos, color='#0084ff', alpha=0.2),
-                    secondary_y=False
-                ))
-                # Fill Pink (RS < 0)
-                apds.append(mpf.make_addplot(
-                    rs_val, panel=4, color='pink', alpha=0,
-                    fill_between=dict(y1=v_rs, y2=v_zero, where=where_rs_neg, color='#ff52c8', alpha=0.2),
-                    secondary_y=False
-                ))
+                apds.append(mpf.make_addplot(rs_val, panel=4, color='blue', alpha=0, fill_between=dict(y1=v_rs, y2=v_zero, where=where_rs_pos, color='#0084ff', alpha=0.2), secondary_y=False))
+                apds.append(mpf.make_addplot(rs_val, panel=4, color='pink', alpha=0, fill_between=dict(y1=v_rs, y2=v_zero, where=where_rs_neg, color='#ff52c8', alpha=0.2), secondary_y=False))
 
-                # 2. Fill RS vs MA
-                # Blue where RS > MA, Pink where RS < MA
                 mask_both = mask_valid_rs & mask_valid_ma
-
                 where_rs_gt_ma = np.zeros_like(v_rs, dtype=bool)
                 where_rs_gt_ma[mask_both] = v_rs[mask_both] > v_ma[mask_both]
-
                 where_rs_lt_ma = np.zeros_like(v_rs, dtype=bool)
                 where_rs_lt_ma[mask_both] = v_rs[mask_both] <= v_ma[mask_both]
 
-                # Fill Blue (RS > MA)
-                apds.append(mpf.make_addplot(
-                    rs_val, panel=4, color='blue', alpha=0,
-                    fill_between=dict(y1=v_rs, y2=v_ma, where=where_rs_gt_ma, color='#0084ff', alpha=0.2),
-                    secondary_y=False
-                ))
-                # Fill Pink (RS < MA)
-                apds.append(mpf.make_addplot(
-                    rs_val, panel=4, color='pink', alpha=0,
-                    fill_between=dict(y1=v_rs, y2=v_ma, where=where_rs_lt_ma, color='#ff52c8', alpha=0.2),
-                    secondary_y=False
-                ))
+                apds.append(mpf.make_addplot(rs_val, panel=4, color='blue', alpha=0, fill_between=dict(y1=v_rs, y2=v_ma, where=where_rs_gt_ma, color='#0084ff', alpha=0.2), secondary_y=False))
+                apds.append(mpf.make_addplot(rs_val, panel=4, color='pink', alpha=0, fill_between=dict(y1=v_rs, y2=v_ma, where=where_rs_lt_ma, color='#ff52c8', alpha=0.2), secondary_y=False))
 
             except KeyError:
                 pass
@@ -310,33 +264,16 @@ class RDTChartGenerator:
                 rti_val = rti_data["RTI_Values"][ticker].reindex(valid_idx)
                 rti_sig = rti_data["RTI_Signals"][ticker].reindex(valid_idx)
 
-                # Line Color: Green if Expansion (Sig=3), Blue otherwise
-                # Split into two lines for coloring
-                rti_exp = rti_val.copy()
-                rti_norm = rti_val.copy()
-
-                # Masking is tricky for connected lines.
-                # Simpler: Plot base blue line, and overlay green line where sig==3.
-                # But green line needs to connect?
-                # Let's plot main line as blue, and markers for expansion? Or just simple blue line for now to avoid crash.
-                # Or use scatter for expansion points?
-                # User asked for line color.
-                # Workaround: Scatter for specific points or just single color.
-                # Let's use single color 'blue' for the line, and add markers for expansion.
-
                 apds.append(mpf.make_addplot(rti_val, panel=5, color='blue', ylabel='RTI', width=2.0))
 
-                # Expansion Markers (Green)
                 exp_dots = rti_val.copy()
                 exp_dots[:] = np.nan
                 mask_exp = (rti_sig == 3)
                 exp_dots[mask_exp] = rti_val[mask_exp]
 
-                # Ensure we have data before plotting
                 if mask_exp.any() and not exp_dots.isna().all():
                      apds.append(mpf.make_addplot(exp_dots, panel=5, type='scatter', markersize=30, color='green', marker='^'))
 
-                # Dots: Orange if Sig=2 (Consecutive Tight)
                 dots = rti_val.copy()
                 dots[:] = np.nan
                 mask_dot = (rti_sig == 2)
@@ -345,10 +282,6 @@ class RDTChartGenerator:
                 if not dots.isna().all():
                     apds.append(mpf.make_addplot(dots, panel=5, type='scatter', markersize=20, color='orange'))
 
-                # Zones (0-5 Red, 5-20 Green)
-                # Hard to fill specific y-ranges in panels in mpf easily without complex returnfig hacking.
-                # We will draw lines at 5, 20, 100.
-
             except KeyError:
                 pass
 
@@ -356,32 +289,49 @@ class RDTChartGenerator:
         if output_filename is None:
             output_filename = f"{ticker}_weekly_chart.png"
 
-        # Style
-        # Custom style to match aesthetics
-        # Panels: 0=Main, 1=Vol, 2=Zone, 3=Perc, 4=VolAdj, 5=RTI
-        # Ratios: Main=3, others=1
-
         rc_params = {'axes.grid': True, 'grid.linestyle': ':'}
         s = mpf.make_mpf_style(base_mpf_style='yahoo', rc=rc_params)
 
-        fig, axes = mpf.plot(
-            plot_df,
-            type='candle',
-            style=s,
-            addplot=apds,
-            volume=True,
-            volume_panel=1,
-            panel_ratios=(4, 1, 1, 1, 1, 1),
-            returnfig=True,
-            figsize=(12, 16),
-            tight_layout=True,
-            title=f"{ticker} Weekly Analysis"
-        )
+        # Main Plot Logic
+        # If we use main_plot_type='line', we can hide it by setting linecolor='None' (needs testing) or alpha=0?
+        # mpf.plot doesn't support alpha for line easily in kwargs.
+        # But we can set `linecolor='white'` if background is white?
+        # 'yahoo' style has white background.
 
-        # Save
-        fig.savefig(output_filename, bbox_inches='tight')
-        print(f"Chart saved to {output_filename}")
-        plt.close(fig)
+        # Another option: Use plot_df but with all NaNs for Close?
+        # Then axis range won't be calculated correctly.
+
+        # Best bet: Use 'line' with very thin width or white color?
+        # But grid lines might be covered? No, line is on top.
+
+        kwargs = {}
+        if main_plot_type == 'line':
+             # Attempt to make invisible
+             # Note: passing `update_width_config` helps
+             kwargs['linecolor'] = 'white' # Hacky, assumes white background
+             # kwargs['linewidths'] = 0 # might work
+
+        try:
+            fig, axes = mpf.plot(
+                plot_df,
+                type=main_plot_type,
+                style=s,
+                addplot=apds,
+                volume=True,
+                volume_panel=1,
+                panel_ratios=(4, 1, 1, 1, 1, 1),
+                returnfig=True,
+                figsize=(12, 16),
+                tight_layout=True,
+                title=f"{ticker} Weekly Analysis",
+                **kwargs
+            )
+
+            fig.savefig(output_filename, bbox_inches='tight')
+            print(f"Chart saved to {output_filename}")
+            plt.close(fig)
+        except Exception as e:
+            print(f"Error plotting {ticker}: {e}")
 
 if __name__ == "__main__":
     import argparse
