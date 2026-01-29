@@ -253,8 +253,15 @@ class RDTChartGenerator:
                 rs_pos = rs_val.apply(lambda x: x if x >= 0 else np.nan)
                 rs_neg = rs_val.apply(lambda x: x if x <= 0 else np.nan)
 
-                apds.append(mpf.make_addplot(rs_pos, panel=4, color='blue', width=1.5, ylabel='Vol Adj RS'))
-                apds.append(mpf.make_addplot(rs_neg, panel=4, color='fuchsia', width=1.5))
+                # Vol Adj RS (Panel 4) with Right Axis Only
+                # To move labels to right, we can use secondary_y=True but typically that adds a second axis.
+                # If we want ONLY right axis, we might need to suppress left labels or use secondary_y=True and hide primary.
+                # mpf puts main ylabel on left by default.
+                # 'ylabel' kwarg sets the label on the left for the panel.
+                # If we omit 'ylabel' here and set it on a secondary_y plot, it might appear on right.
+
+                apds.append(mpf.make_addplot(rs_pos, panel=4, color='blue', width=1.5, secondary_y=True))
+                apds.append(mpf.make_addplot(rs_neg, panel=4, color='fuchsia', width=1.5, secondary_y=True))
 
                 if not rs_ma.isna().all():
                     ma_diff = rs_ma.diff()
@@ -278,8 +285,8 @@ class RDTChartGenerator:
                     ma_rising[~mask_rising] = np.nan
                     ma_falling[~mask_falling] = np.nan
 
-                    apds.append(mpf.make_addplot(ma_rising, panel=4, color='blue', width=1.5))
-                    apds.append(mpf.make_addplot(ma_falling, panel=4, color='fuchsia', width=1.5))
+                    apds.append(mpf.make_addplot(ma_rising, panel=4, color='blue', width=1.5, secondary_y=True))
+                    apds.append(mpf.make_addplot(ma_falling, panel=4, color='fuchsia', width=1.5, secondary_y=True))
 
                 v_rs = rs_val.values
                 v_ma = rs_ma.values
@@ -295,12 +302,12 @@ class RDTChartGenerator:
                 apds.append(mpf.make_addplot(
                     rs_val, panel=4, color='blue', alpha=0,
                     fill_between=dict(y1=v_rs, y2=v_zero, where=where_rs_pos, color='#0084ff', alpha=0.2),
-                    secondary_y=False
+                    secondary_y=True
                 ))
                 apds.append(mpf.make_addplot(
                     rs_val, panel=4, color='pink', alpha=0,
                     fill_between=dict(y1=v_rs, y2=v_zero, where=where_rs_neg, color='#ff52c8', alpha=0.2),
-                    secondary_y=False
+                    secondary_y=True
                 ))
 
                 mask_both = mask_valid_rs & mask_valid_ma
@@ -312,12 +319,13 @@ class RDTChartGenerator:
                 apds.append(mpf.make_addplot(
                     rs_val, panel=4, color='blue', alpha=0,
                     fill_between=dict(y1=v_rs, y2=v_ma, where=where_rs_gt_ma, color='#0084ff', alpha=0.2),
-                    secondary_y=False
+                    secondary_y=True
                 ))
                 apds.append(mpf.make_addplot(
                     rs_val, panel=4, color='pink', alpha=0,
                     fill_between=dict(y1=v_rs, y2=v_ma, where=where_rs_lt_ma, color='#ff52c8', alpha=0.2),
-                    secondary_y=False
+                    secondary_y=True,
+                    ylabel='Vol Adj RS' # Set label on the right axis
                 ))
 
             except KeyError:
