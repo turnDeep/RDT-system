@@ -200,25 +200,43 @@ class RDTChartGenerator:
                 rs_val = rs_vol_data["RS_Values"][ticker].reindex(valid_idx)
                 rs_ma = rs_vol_data["RS_MA"][ticker].reindex(valid_idx)
 
-                # Color: RS > 0 ? Blue : Fuchsia
-                # Note: 'fuchsia' is accepted by matplotlib, but passing a list of colors to make_addplot
-                # for a line plot might not be fully supported as intended if it expects a single color string or
-                # strictly valid matplotlib format list.
-                # mpf.make_addplot supports `color` as list for bar charts, but for line charts it applies to the whole line usually.
-                # However, some versions support multicolor lines if segments? No.
-                # If we want multicolor line, we usually need to plot two series or use type='scatter' or 'bar'.
-                # But user asked for LINE plot.
-                # Workaround: Plot two series, one for positive, one for negative, masking the other.
+                # Plot RS Line (Blue)
+                apds.append(mpf.make_addplot(rs_val, panel=4, color='#0066FF', ylabel='Vol Adj RS', width=1.5))
 
-                rs_pos = rs_val.apply(lambda x: x if x > 0 else np.nan)
-                rs_neg = rs_val.apply(lambda x: x if x <= 0 else np.nan)
-
-                if not rs_pos.isna().all():
-                    apds.append(mpf.make_addplot(rs_pos, panel=4, color='blue', ylabel='Vol Adj RS', width=1.5))
-                if not rs_neg.isna().all():
-                    apds.append(mpf.make_addplot(rs_neg, panel=4, color='fuchsia', width=1.5))
+                # Plot MA Line (Gray)
                 if not rs_ma.isna().all():
-                    apds.append(mpf.make_addplot(rs_ma, panel=4, color='gray', width=1.0))
+                     apds.append(mpf.make_addplot(rs_ma, panel=4, color='gray', width=1.0))
+
+                # Fills (Bullish and Bearish)
+                v1 = rs_val.values
+                v2 = rs_ma.values
+                mask_valid = ~np.isnan(v1) & ~np.isnan(v2)
+
+                where_bull = np.zeros_like(v1, dtype=bool)
+                where_bull[mask_valid] = v1[mask_valid] >= v2[mask_valid]
+
+                where_bear = np.zeros_like(v1, dtype=bool)
+                where_bear[mask_valid] = v1[mask_valid] < v2[mask_valid]
+
+                # Bull Fill
+                apds.append(mpf.make_addplot(
+                    rs_val,
+                    panel=4,
+                    color='blue',
+                    alpha=0, # Invisible line
+                    fill_between=dict(y1=rs_val.values, y2=rs_ma.values, where=where_bull, color='#0099FF', alpha=0.3),
+                    secondary_y=False
+                ))
+
+                # Bear Fill
+                apds.append(mpf.make_addplot(
+                    rs_val,
+                    panel=4,
+                    color='pink',
+                    alpha=0, # Invisible line
+                    fill_between=dict(y1=rs_val.values, y2=rs_ma.values, where=where_bear, color='#FF33CC', alpha=0.3),
+                    secondary_y=False
+                ))
 
             except KeyError:
                 pass
