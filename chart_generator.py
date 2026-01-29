@@ -124,8 +124,7 @@ class RDTChartGenerator:
                 slow_red[cond_bull] = np.nan
 
                 # Add Lines
-                apds.append(mpf.make_addplot(fast_blue, panel=0, color='blue', width=1.5))
-                apds.append(mpf.make_addplot(fast_yellow, panel=0, color='yellow', width=1.5))
+                # Fast Trail lines removed as per request (Blue/Yellow)
                 apds.append(mpf.make_addplot(slow_green, panel=0, color='green', width=2.0))
                 apds.append(mpf.make_addplot(slow_red, panel=0, color='red', width=2.0))
 
