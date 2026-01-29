@@ -29,12 +29,11 @@ OUTPUT_PATH = os.path.join(DATA_FOLDER, "rs_percentile_histogram_weekly.pkl")
 
 BENCHMARK_SYMBOL = "^GSPC"
 
-# Pine Script defaults converted to Weekly (approx)
-# 1M = 26 days ~ 4-5 weeks
-# 3M = 63 days ~ 13 weeks
-LOOKBACK_1M_W = 5
-LOOKBACK_3M_W = 13
-ALPHA_3M = 0.03 # Kept same, but might need adjustment for weekly frequency (0.03 daily ~ ?? weekly).
+# Pine Script defaults (Applied to Weekly bars as requested)
+# Note: "1M" mode uses 26 bars (26 weeks), "3M" mode uses 63 bars (63 weeks)
+LOOKBACK_1M_W = 26
+LOOKBACK_3M_W = 63
+ALPHA_3M = 0.03
 # If daily alpha is 0.03, weekly might be larger?
 # Pine script: ewRet = alpha * ret + (1-alpha) * prev.
 # For now, we stick to the provided logic structure but apply it to weekly bars.
